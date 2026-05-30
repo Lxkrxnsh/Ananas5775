@@ -1,5 +1,6 @@
 #include <ncurses.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <unistd.h>
 
 #define WIDTH 80
@@ -19,28 +20,40 @@ int main(void) {
   int next[HEIGHT][WIDTH] = {0};
   int running = 1;
   int speed = 100;
-  int ch;
 
   init_grid(grid);
 
-  if (!freopen("/dev/tty", "r", stdin))
+  FILE *tty = fopen("/dev/tty", "r");
+  if (tty == NULL) {
     return 1;
-  clearerr(stdin);
+  }
 
-  initscr();
+  SCREEN *term = newterm(NULL, stdout, tty);
+  if (term == NULL) {
+    fclose(tty);
+    return 1;
+  }
+  set_term(term);
+
   noecho();
   cbreak();
-  curs_set(FALSE);
   nodelay(stdscr, TRUE);
+  curs_set(FALSE);
 
   while (running) {
+    int ch;
     while ((ch = getch()) != ERR) {
-      if (ch == 'a' || ch == 'A')
-        speed = (speed > 20) ? speed - 10 : 20;
-      else if (ch == 'z' || ch == 'Z')
-        speed = (speed < 500) ? speed + 10 : 500;
-      else if (ch == ' ')
+      if (ch == 'a' || ch == 'A') {
+        speed -= 10;
+        if (speed < 20)
+          speed = 20;
+      } else if (ch == 'z' || ch == 'Z') {
+        speed += 10;
+        if (speed > 500)
+          speed = 500;
+      } else if (ch == ' ') {
         running = 0;
+      }
     }
 
     draw_grid(grid);
@@ -51,12 +64,16 @@ int main(void) {
   }
 
   endwin();
+  delscreen(term);
+  fclose(tty);
+
   return 0;
 }
 
 static void init_grid(int grid[HEIGHT][WIDTH]) {
   int ch;
-  int r = 0, c = 0;
+  int r = 0;
+  int c = 0;
 
   while ((ch = getchar()) != EOF && r < HEIGHT) {
     if (ch == '\n') {
@@ -77,7 +94,9 @@ static void draw_grid(int grid[HEIGHT][WIDTH]) {
       mvaddch(i, j, grid[i][j] ? ALIVE : DEAD);
     }
   }
-  mvprintw(HEIGHT - 1, 0, "A: faster | Z: slower | SPACE: quit");
+
+  mvprintw(HEIGHT - 1, 0, "A - faster | Z - slower | SPACE - quit");
+
   refresh();
 }
 
@@ -88,7 +107,11 @@ static int count_neighbors(int grid[HEIGHT][WIDTH], int y, int x) {
     for (int dx = -1; dx <= 1; dx++) {
       if (dy == 0 && dx == 0)
         continue;
-      count += grid[(y + dy + HEIGHT) % HEIGHT][(x + dx + WIDTH) % WIDTH];
+
+      int ny = (y + dy + HEIGHT) % HEIGHT;
+      int nx = (x + dx + WIDTH) % WIDTH;
+
+      count += grid[ny][nx];
     }
   }
   return count;
